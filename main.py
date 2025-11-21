@@ -6,15 +6,19 @@ from fastapi import FastAPI, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime
+#anotaciones---------------------------------
+#-para iniciar el servidor: python main.py en la terminal de git
+#- para detener el servidor ctrl+c en el terminal que estoy
+
 
 # --- 1. CONFIGURACIÓN Y VARIABLES DE ENTORNO ---
 # En un entorno real, esto iría en un archivo .env
 # REGÍSTRATE en CoinMarketCap para obtener tu propia API KEY gratuita: https://pro.coinmarketcap.com/
-CMC_API_KEY = "TU_API_KEY_AQUI" 
+CMC_API_KEY = "00d0af49977e4c2e9fea1cea7f395445"  # https://pro.coinmarketcap.com/account/ la key se genera aca
 CMC_BASE_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
 
 # Si no tienes API Key aún, pon esto en True para simular datos y probar el código
-USE_MOCK_DATA = True 
+USE_MOCK_DATA = False 
 
 # --- 2. CAPA DE BASE DE DATOS (SQLAlchemy) ---
 # Cumple el requisito: "Optimize databases and manage data storage using SQL"
