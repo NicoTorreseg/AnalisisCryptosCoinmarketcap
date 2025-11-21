@@ -1,0 +1,22 @@
+# --- Archivos de Python compilados ---
+__pycache__/
+*.py[cod]
+*$py.class
+
+# --- Entornos virtuales ---
+env/
+venv/
+.venv/
+
+# --- Base de datos (¡IMPORTANTE: NO SUBIR!) ---
+*.sqlite3
+*.db
+crypto_ops.db
+
+# --- Variables de entorno y claves secretas ---
+.env
+
+# --- Archivos de configuración de IDE ---
+.vscode/
+.idea/
+```
