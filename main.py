@@ -16,9 +16,9 @@ Base.metadata.create_all(bind=engine)
 
 # 2. Configurar la API
 app = FastAPI(
-    title="Crypto Dip Detector API",
+    title="Market Dip Detector API",
     description="API modular para detectar oportunidades en cripto.",
-    version="2.0.0"
+    version="3.0.0"
 )
 
 # 3. Instanciamos el analizador (Ya toma la config desde AppServices -> config.py)
@@ -28,7 +28,7 @@ analyzer = MarketAnalyzer()
 
 @app.get("/")
 def read_root():
-    return {"message": "Crypto Analyzer Modular v2 is running! Estructura limpia."}
+    return {"message": "Market Analyzer Modular v3 is running! Estructura limpia."}
 
 @app.get("/analyze", response_model=List[CoinSignalSchema])
 def analyze_market(threshold: float = -5.0, db: Session = Depends(get_db)):
