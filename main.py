@@ -5,8 +5,8 @@ from typing import List
 
 # --- IMPORTACIONES MODULARES (Tus archivos) ---
 from database import engine, get_db, Base
-from modelsTables import CryptoSignal       # Tu tabla de base de datos
-from FieldsJSON import CoinSignalSchema     # Tu validador de JSON
+from modelsTables import CryptoSignal, StockSignal # <--- Agregado StockSignal
+from FieldsJSON import CoinSignalSchema, StockSignalSchema # <--- Agregado StockSignalSchema
 from AppServices import MarketAnalyzer      # Tu lógica de negocio
 
 # --- INICIALIZACIÓN ---
@@ -56,6 +56,31 @@ def analyze_market(threshold: float = -5.0, db: Session = Depends(get_db)):
         db.commit()
         db.refresh(db_signal)
         
+        saved_signals.append(db_signal)
+        
+    return saved_signals
+
+#nuevo endpoint de stocks de yahoofinance
+@app.get("/analyze/stocks", response_model=List[StockSignalSchema])
+def analyze_stocks(threshold: float = -3.0, db: Session = Depends(get_db)):
+    """
+    Nuevo endpoint: Analiza acciones (Yahoo Finance) y guarda las oportunidades.
+    """
+    # 1. Buscar datos usando AppServices
+    opportunities = analyzer.find_stock_dips(threshold)
+    
+    saved_signals = []
+    
+    # 2. Guardar en Base de Datos
+    for op in opportunities:
+        db_signal = StockSignal(
+            symbol=op['symbol'],
+            price=op['price'],
+            percent_change=op['percent_change']
+        )
+        db.add(db_signal)
+        db.commit()
+        db.refresh(db_signal)
         saved_signals.append(db_signal)
         
     return saved_signals

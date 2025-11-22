@@ -15,3 +15,17 @@ class CryptoSignal(Base):
     price = Column(Float)
     percent_change_24h = Column(Float)
     detected_at = Column(DateTime, default=datetime.utcnow)
+
+class StockSignal(Base):
+    """
+    Modelo para guardar oportunidades de Stocks (Acciones).
+    """
+    __tablename__ = "stock_signals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    symbol = Column(String, index=True)  # Ej: AAPL
+    price = Column(Float)                # Precio actual
+    percent_change = Column(Float)       # Cambio del día
+    detected_at = Column(DateTime, default=datetime.utcnow)
+
+    
