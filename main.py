@@ -204,7 +204,7 @@ def view_portfolio(db: Session = Depends(get_db)):
     return portfolio
 
 # === NUEVO ENDPOINT PARA EL DASHBOARD ===
-@app.get("/dashboard", response_class=HTMLResponse, tags=["Dashboard"])
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Dashboard"])  #include_in_schema=False #Si lo agregamos en los parametros se puede ocultar este endpoint de la doc
 def dashboard(request: Request, db: Session = Depends(get_db)):
     """
     Este endpoint sirve la interfaz gráfica. 
@@ -226,6 +226,46 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "opportunities": sorted(list(opportunities))
     })
 
+# --- NUEVO ENDPOINT WEB DEL PORTAFOLIO ---
+@app.get("/my-portfolio", response_class=HTMLResponse, tags=["Dashboard"])
+def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
+    """
+    Vista visual del portafolio con cálculo de ganancias/pérdidas.
+    
+    # 💼 [HAZ CLIC AQUÍ PARA VER TU PORTAFOLIO WEB](/my-portfolio)
+    """
+    trades = db.query(Trade).filter(Trade.status == "OPEN").all()
+    portfolio_data = []
+    
+    for trade in trades:
+        # 1. Obtener precio en vivo (usamos la misma lógica que en la API JSON)
+        live_price = analyzer.get_current_price(trade.symbol)
+        if live_price == 0:
+            live_price = trade.entry_price 
+            
+        # 2. Cálculos matemáticos
+        current_val = live_price * trade.quantity
+        pnl = current_val - trade.invested_amount
+        pnl_pct = (pnl / trade.invested_amount) * 100
+        
+        # 3. Crear objeto para la plantilla
+        item = {
+            "symbol": trade.symbol,
+            "bought_at": trade.bought_at,
+            "quantity": trade.quantity,
+            "entry_price": trade.entry_price,
+            "current_price": live_price,
+            "current_value": current_val,
+            "pnl_usd": pnl,
+            "pnl_percent": pnl_pct
+        }
+        portfolio_data.append(item)
+        
+    # 4. Renderizar el HTML
+    return templates.TemplateResponse("portfolio.html", {
+        "request": request, 
+        "portfolio": portfolio_data
+    })
 
 # --- ARRANQUE DEL SERVIDOR ---
 if __name__ == "__main__":
