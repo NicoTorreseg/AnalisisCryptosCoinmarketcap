@@ -56,6 +56,35 @@ class MarketAnalyzer:
         rs = gain / loss
         rsi = 100 - (100 / (1 + rs))
         return round(rsi.iloc[-1], 2)
+    
+    # --- NUEVO: OBTENER PRECIO ACTUAL DE UN SOLO ACTIVO ---
+    def get_current_price(self, symbol: str) -> float:
+        """Busca el precio actual en Yahoo Finance (funciona para Stocks y Cripto si agregas -USD)."""
+        try:
+            # Intentar como Cripto primero (ej: BTC-USD)
+            if symbol not in WATCHLIST_STOCKS: 
+                ticker = yf.Ticker(f"{symbol}-USD")
+            else:
+                ticker = yf.Ticker(symbol)
+                
+            data = ticker.history(period="1d")
+            if not data.empty:
+                return data['Close'].iloc[-1]
+            return 0.0
+        except:
+            return 0.0
+
+    # --- NUEVO: SENTIMIENTO DEL MERCADO (FEAR & GREED) ---
+    def get_market_sentiment(self):
+        """Consulta la API gratuita de Alternative.me para ver el miedo/codicia."""
+        try:
+            url = "https://api.alternative.me/fng/"
+            r = requests.get(url)
+            data = r.json()
+            # Retorna ej: {"value": "25", "classification": "Extreme Fear"}
+            return data['data'][0] 
+        except Exception as e:
+            return {"value": "Unknown", "classification": "Error"}
 
     def get_market_data(self):
         if USE_MOCK_DATA:
