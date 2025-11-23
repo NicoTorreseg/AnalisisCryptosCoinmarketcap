@@ -12,3 +12,13 @@ WATCHLIST_STOCKS = [
     "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", 
     "NFLX", "AMD", "INTC", "BABA", "PYPL", "UBER", "COIN"
 ]
+
+# --- NUEVA CONFIGURACIÓN PARA NOTIFICACIONES ---
+# 1. Busca "BotFather" en Telegram, crea un bot y pega el token aquí:
+TELEGRAM_BOT_TOKEN = "8205995262:AAGX9eGLz4tX6u-_U88x20dUW30gP1wnB50"
+
+# 2. Busca "userinfobot" en Telegram para saber tu ID numérico y pégalo aquí:
+TELEGRAM_CHAT_ID = "1838400268" 
+
+# Horarios de ejecución automática (formato 24hs)
+SCHEDULE_HOURS = [9, 13, 22]
