@@ -21,13 +21,21 @@ from datetime import timedelta # <--- Para filtrar por fecha
 # --- LIFESPAN (Igual que antes) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("--- 🚀 Iniciando Sistema ---")
+    print("--- 🚀 Iniciando Sistema v5 (Auto-Trading) ---")
     smart_migration(Base.metadata)
     Base.metadata.create_all(bind=engine)
     
     scheduler = BackgroundScheduler()
+    
+    # Tarea 1: Buscar compras (Horarios fijos)
     for hour in SCHEDULE_HOURS:
         scheduler.add_job(auto_check_market, 'cron', hour=hour, minute=0)
+    
+    # Tarea 2: NUEVO - Gestionar Ventas (Cada 15 minutos)
+    # Necesitamos chequear ventas más seguido que compras
+    scheduler.add_job(auto_manage_portfolio, 'interval', minutes=15)
+    print("📅 Tarea de Ventas: Cada 15 min")
+
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -266,6 +274,56 @@ def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
         "request": request, 
         "portfolio": portfolio_data
     })
+
+
+# --- NUEVA FUNCIÓN AUTOMÁTICA DE VENTA ---
+def auto_manage_portfolio():
+    """
+    Revisa los trades en estado 'OPEN'.
+    Si cumplen condición de TP o SL, los cierra y avisa a Telegram.
+    """
+    print(f"\n💼 [AUTO] Gestionando Portafolio: {datetime.now()}")
+    db = SessionLocal()
+    analyzer = MarketAnalyzer()
+    
+    try:
+        # 1. Buscar solo trades abiertos
+        open_trades = db.query(Trade).filter(Trade.status == "OPEN").all()
+        
+        for trade in open_trades:
+            # Obtener precio en vivo
+            current_price = analyzer.get_current_price(trade.symbol)
+            
+            # Verificar si vendemos
+            should_sell, reason, pnl = analyzer.check_exit_conditions(trade, current_price)
+            
+            if should_sell:
+                # --- ACTUALIZAR DB ---
+                trade.status = "CLOSED"
+                trade.exit_price = current_price
+                trade.sell_reason = reason
+                trade.closed_at = datetime.utcnow()
+                trade.realized_pnl = pnl
+                
+                # --- NOTIFICAR ---
+                icon = "✅" if pnl > 0 else "🔻"
+                msg = (
+                    f"{icon} **VENTA AUTOMÁTICA EJECUTADA**\n"
+                    f"Razón: {reason}\n"
+                    f"Activo: {trade.symbol}\n"
+                    f"Entrada: ${round(trade.entry_price, 4)}\n"
+                    f"Salida: ${round(current_price, 4)}\n"
+                    f"Resultado: ${round(pnl, 2)} USD"
+                )
+                Notifier.send_telegram_alert(msg)
+                print(f"   >>> Venta: {trade.symbol} | Razón: {reason} | PnL: ${pnl}")
+        
+        db.commit() # Guardar todos los cierres
+        
+    except Exception as e:
+        print(f"❌ Error gestionando portafolio: {e}")
+    finally:
+        db.close()
 
 # --- ARRANQUE DEL SERVIDOR ---
 if __name__ == "__main__":

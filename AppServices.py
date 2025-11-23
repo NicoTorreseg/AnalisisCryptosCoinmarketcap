@@ -174,6 +174,36 @@ class MarketAnalyzer:
             
         opportunities.sort(key=lambda x: x['percent_change'])
         return opportunities
+    
+    def check_exit_conditions(self, trade, current_price: float):
+        """
+        Analiza si un trade debe cerrarse.
+        Estrategia: 
+        - Take Profit (TP): Ganancia del 5%
+        - Stop Loss (SL): Pérdida del 3%
+        """
+        # CONFIGURACIÓN (Puedes cambiar estos números)
+        TP_PCT = 0.05  # 5% Ganancia
+        SL_PCT = -0.03 # 3% Pérdida (Stop Loss)
+
+        if current_price <= 0: return False, None, 0.0
+
+        # Calcular porcentaje actual (PnL %)
+        # Fórmula: (PrecioActual - PrecioEntrada) / PrecioEntrada
+        pnl_percent = (current_price - trade.entry_price) / trade.entry_price
+
+        # 1. ¿Tocó el Take Profit? (Vendemos feliz)
+        if pnl_percent >= TP_PCT:
+            realized_usd = (current_price * trade.quantity) - trade.invested_amount
+            return True, "TAKE_PROFIT_5%", realized_usd
+        
+        # 2. ¿Tocó el Stop Loss? (Vendemos triste para no perder más)
+        if pnl_percent <= SL_PCT:
+            realized_usd = (current_price * trade.quantity) - trade.invested_amount
+            return True, "STOP_LOSS_3%", realized_usd
+
+        # 3. Si no pasa nada, seguimos holdeando
+        return False, None, 0.0
 
     def _get_mock_data(self):
         """Datos falsos para pruebas."""

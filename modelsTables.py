@@ -27,9 +27,15 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String, index=True)       # Ej: BTC
-    entry_price = Column(Float)               # Precio al que compraste
-    quantity = Column(Float)                  # Cantidad de monedas
-    invested_amount = Column(Float)           # Total invertido en USD (entry_price * quantity)
+    symbol = Column(String, index=True)
+    entry_price = Column(Float)
+    quantity = Column(Float)
+    invested_amount = Column(Float)
     status = Column(String, default="OPEN")   # OPEN / CLOSED
     bought_at = Column(DateTime, default=datetime.utcnow)
+    
+    # --- NUEVOS CAMPOS PARA LA VENTA ---
+    exit_price = Column(Float, nullable=True)     # Precio al que vendiste
+    sell_reason = Column(String, nullable=True)   # "TP" (Take Profit) o "SL" (Stop Loss)
+    closed_at = Column(DateTime, nullable=True)   # Fecha de venta
+    realized_pnl = Column(Float, nullable=True)   # Ganancia neta en USD
