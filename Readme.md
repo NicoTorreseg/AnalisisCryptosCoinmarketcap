@@ -48,3 +48,9 @@ Abre tu navegador en http://127.0.0.1:8000/docs para ver la interfaz interactiva
 GET /analyze: Busca monedas que han caído más de un 5% (configurable) y las guarda en DB.
 
 GET /history: Muestra el historial de alertas detectadas.
+
+------------------------------------------------------------------------------------------------------
+Branchs:
+
+  main "Version estable 4.0: Dashboard Manual y Portfolio Web"
+  feature/auto-sales "bot de compra y venta automatico"
