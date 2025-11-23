@@ -1,25 +1,23 @@
 from pydantic import BaseModel
 from datetime import datetime
+from typing import Optional
 
 class CoinSignalSchema(BaseModel):
-    """
-    Esquema para serializar datos.
-    NOTA: Los nombres aquí deben coincidir EXACTAMENTE con los de modelsTables.py
-    """
     symbol: str
     name: str
     price: float
     percent_change_24h: float
-    detected_at: datetime     # <--- CAMBIO AQUÍ: Antes decía 'timestamp'
+    rsi: Optional[float] = None
+    detected_at: datetime
 
     class Config:
-        # Permite leer datos desde los modelos ORM de SQLAlchemy
         from_attributes = True
 
 class StockSignalSchema(BaseModel):
     symbol: str
     price: float
     percent_change: float
+    rsi: Optional[float] = None
     detected_at: datetime
 
     class Config:

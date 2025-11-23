@@ -1,14 +1,13 @@
 import requests
-from typing import List
-
 import yfinance as yf
-import pandas as pd # Asegúrate de tener pandas (se instala solo con yfinance)
+import pandas as pd # Necesario para el cálculo matemático
+from typing import List
 from config import (
     CMC_API_KEY, CMC_BASE_URL, USE_MOCK_DATA, WATCHLIST_STOCKS,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 )
 
-# --- CLASE NUEVA: NOTIFICADOR ---
+# --- CLASE NOTIFICADOR ---
 class Notifier:
     """Encargada de enviar alertas a Telegram."""
     
@@ -22,25 +21,41 @@ class Notifier:
         payload = {
             "chat_id": TELEGRAM_CHAT_ID,
             "text": message,
-            "parse_mode": "Markdown" # Permite usar negritas
+            "parse_mode": "Markdown"
         }
         try:
             requests.post(url, json=payload)
-            print("📨 Notificación enviada a Telegram.")
+            # print("📨 Notificación enviada a Telegram.") # Descomentar para debug
         except Exception as e:
             print(f"Error enviando Telegram: {e}")
 
+# --- CLASE ANALISTA DE MERCADO ---
 class MarketAnalyzer:
-    """
-    Clase encargada de la lógica pura: Fetchear datos, filtrar y analizar.
-    """
-    
     def __init__(self):
         self.api_key = CMC_API_KEY
         self.headers = {
             'Accepts': 'application/json',
             'X-CMC_PRO_API_KEY': self.api_key,
         }
+
+    # --- NUEVO MÉTODO: CÁLCULO MATEMÁTICO DEL RSI ---
+    def _calculate_rsi(self, series: pd.Series, period: int = 14) -> float:
+        """
+        Calcula el RSI (Relative Strength Index) dado un historial de precios.
+        """
+        if len(series) < period + 1:
+            return 50.0 # Valor neutro si faltan datos
+        
+        delta = series.diff()
+        gain = (delta.where(delta > 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+        loss = (-delta.where(delta < 0, 0)).ewm(alpha=1/period, adjust=False).mean()
+
+        if float(loss.iloc[-1]) == 0:
+            return 100.0
+
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return round(rsi.iloc[-1], 2)
 
     def get_market_data(self):
         if USE_MOCK_DATA:
@@ -54,42 +69,74 @@ class MarketAnalyzer:
             print(f"Error CoinMarketCap: {e}")
             return []
 
+    # --- CRIPTOS ---
     def find_dip_opportunities(self, threshold: float = -5.0) -> List[dict]:
-        # ... (Tu lógica original se mantiene igual) ...
         raw_data = self.get_market_data()
         opportunities = []
+        
+        # print(f"Analizando {len(raw_data)} criptos...") # Debug
+
         for coin in raw_data:
             quote = coin['quote']['USD']
             change_24h = quote['percent_change_24h']
+            
             if change_24h <= threshold:
+                symbol = coin['symbol']
+                
+                # --- AQUÍ ESTABA EL ERROR: FALTABA CALCULAR EL RSI ---
+                # Pedimos historial a Yahoo Finance para calcular RSI
+                    # Truco: Agregamos "-USD" (ej: BTC-USD)
+                    # 1 mes para tener datos suficientes
+                rsi_val = None
+                try:
+                    yf_symbol = f"{symbol}-USD"
+                    ticker = yf.Ticker(yf_symbol)
+                    hist = ticker.history(period="1mo")
+                    
+                    if not hist.empty:
+                        rsi_val = self._calculate_rsi(hist['Close'])
+                    else:
+                        print(f"⚠️ Yahoo no tiene datos para: {yf_symbol}") # <--- AGREGA ESTO
+                        
+                except Exception as e:
+                    print(f"Error buscando {symbol}: {e}")
+
                 opportunities.append({
-                    "symbol": coin['symbol'],
+                    "symbol": symbol,
                     "name": coin['name'],
                     "price": quote['price'],
-                    "percent_change_24h": change_24h
+                    "percent_change_24h": change_24h,
+                    "rsi": rsi_val  # <--- AHORA SÍ ENVIAMOS LA CLAVE 'rsi'
                 })
+        
         opportunities.sort(key=lambda x: x['percent_change_24h'])
         return opportunities
 
+    # --- ACCIONES (STOCKS) ---
     def find_stock_dips(self, threshold: float = -3.0) -> List[dict]:
-        # ... (Tu lógica original se mantiene igual) ...
         opportunities = []
         try:
             tickers = yf.Tickers(" ".join(WATCHLIST_STOCKS))
             for symbol in WATCHLIST_STOCKS:
                 try:
                     ticker = tickers.tickers[symbol]
-                    hist = ticker.history(period="5d")
-                    if len(hist) >= 2:
+                    # CAMBIO: Pedimos '1mo' en vez de '5d' para poder calcular RSI (necesita 14 dias)
+                    hist = ticker.history(period="1mo") 
+                    
+                    if len(hist) >= 15:
                         current = hist['Close'].iloc[-1]
                         prev = hist['Close'].iloc[-2]
                         change_pct = ((current - prev) / prev) * 100
+                        
+                        # Calcular RSI
+                        rsi_val = self._calculate_rsi(hist['Close'])
                         
                         if change_pct <= threshold:
                             opportunities.append({
                                 "symbol": symbol,
                                 "price": round(current, 2),
-                                "percent_change": round(change_pct, 2)
+                                "percent_change": round(change_pct, 2),
+                                "rsi": rsi_val # <--- Agregamos RSI aquí también
                             })
                 except Exception:
                     continue
@@ -104,5 +151,4 @@ class MarketAnalyzer:
         return [
             {"symbol": "BTC", "name": "Bitcoin", "quote": {"USD": {"price": 65000, "percent_change_24h": 1.2}}},
             {"symbol": "ETH", "name": "Ethereum", "quote": {"USD": {"price": 3500, "percent_change_24h": -6.5}}},
-            {"symbol": "SOL", "name": "Solana", "quote": {"USD": {"price": 140, "percent_change_24h": -10.2}}},
         ]
