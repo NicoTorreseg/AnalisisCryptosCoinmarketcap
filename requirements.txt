@@ -5,3 +5,4 @@ requests
 pydantic>=2.9.0
 yfinance
 apscheduler
+jinja2

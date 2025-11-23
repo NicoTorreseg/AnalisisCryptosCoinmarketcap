@@ -13,6 +13,11 @@ from FieldsJSON import CoinSignalSchema, StockSignalSchema, TradeCreateSchema, P
 from AppServices import MarketAnalyzer, Notifier
 from config import SCHEDULE_HOURS
 
+from fastapi import FastAPI, Depends, HTTPException, Request # <--- Agrega Request
+from fastapi.responses import HTMLResponse # <--- Importante
+from fastapi.templating import Jinja2Templates # <--- Importante
+from datetime import timedelta # <--- Para filtrar por fecha
+
 # --- LIFESPAN (Igual que antes) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -75,6 +80,8 @@ def auto_check_market():
 
 app = FastAPI(title="Market Bot Trading & AI", lifespan=lifespan)
 analyzer = MarketAnalyzer()
+
+templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 def root():
@@ -195,6 +202,29 @@ def view_portfolio(db: Session = Depends(get_db)):
         portfolio.append(item)
         
     return portfolio
+
+# === NUEVO ENDPOINT PARA EL DASHBOARD ===
+@app.get("/dashboard", response_class=HTMLResponse, tags=["Dashboard"])
+def dashboard(request: Request, db: Session = Depends(get_db)):
+    """
+    Este endpoint sirve la interfaz gráfica. 
+    
+    # 🚀 [HAZ CLIC AQUÍ PARA ABRIR EL DASHBOARD](/dashboard)
+    
+    *(El botón 'Try it out' de abajo solo te mostrará el código HTML crudo)*
+    """
+    # 1. Buscamos qué señales se detectaron en las últimas 24 horas
+    last_24h = datetime.utcnow() - timedelta(hours=24)
+    
+    recent_cryptos = db.query(CryptoSignal.symbol).filter(CryptoSignal.detected_at >= last_24h).distinct().all()
+    recent_stocks = db.query(StockSignal.symbol).filter(StockSignal.detected_at >= last_24h).distinct().all()
+    
+    opportunities = set([row[0] for row in recent_cryptos] + [row[0] for row in recent_stocks])
+    
+    return templates.TemplateResponse("dashboard.html", {
+        "request": request, 
+        "opportunities": sorted(list(opportunities))
+    })
 
 
 # --- ARRANQUE DEL SERVIDOR ---
