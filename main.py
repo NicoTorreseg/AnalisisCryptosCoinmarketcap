@@ -31,11 +31,10 @@ async def lifespan(app: FastAPI):
     for hour in SCHEDULE_HOURS:
         scheduler.add_job(auto_check_market, 'cron', hour=hour, minute=0)
     
-    # Tarea 2: NUEVO - Gestionar Ventas (Cada 15 minutos)
-    # Necesitamos chequear ventas más seguido que compras
-    scheduler.add_job(auto_manage_portfolio, 'interval', minutes=15)
-    print("📅 Tarea de Ventas: Cada 15 min")
-
+   # Tarea 2: Ventas
+    # CAMBIO: De 15 minutos a 1 minuto
+    scheduler.add_job(auto_manage_portfolio, 'interval', minutes=1)
+    print("📅 Robot de Ventas activo: Escanea cada 60 segundos.")
     scheduler.start()
     yield
     scheduler.shutdown()
@@ -242,39 +241,58 @@ def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
     
     # 💼 [HAZ CLIC AQUÍ PARA VER TU PORTAFOLIO WEB](/my-portfolio)
     """
-    trades = db.query(Trade).filter(Trade.status == "OPEN").all()
-    portfolio_data = []
+    # 1. Traer TODOS los trades (Abiertos y Cerrados)
+    all_trades = db.query(Trade).order_by(Trade.bought_at.desc()).all()
     
-    for trade in trades:
-        # 1. Obtener precio en vivo (usamos la misma lógica que en la API JSON)
-        live_price = analyzer.get_current_price(trade.symbol)
-        if live_price == 0:
-            live_price = trade.entry_price 
+    open_positions = []
+    closed_history = []
+    
+    for trade in all_trades:
+        # --- LÓGICA PARA TRADES ABIERTOS ---
+        if trade.status == "OPEN":
+            # Precio en vivo
+            live_price = analyzer.get_current_price(trade.symbol)
+            if live_price == 0: live_price = trade.entry_price
             
-        # 2. Cálculos matemáticos
-        current_val = live_price * trade.quantity
-        pnl = current_val - trade.invested_amount
-        pnl_pct = (pnl / trade.invested_amount) * 100
-        
-        # 3. Crear objeto para la plantilla
-        item = {
-            "symbol": trade.symbol,
-            "bought_at": trade.bought_at,
-            "quantity": trade.quantity,
-            "entry_price": trade.entry_price,
-            "current_price": live_price,
-            "current_value": current_val,
-            "pnl_usd": pnl,
-            "pnl_percent": pnl_pct
-        }
-        portfolio_data.append(item)
-        
-    # 4. Renderizar el HTML
+            current_val = live_price * trade.quantity
+            pnl = current_val - trade.invested_amount
+            pnl_pct = (pnl / trade.invested_amount) * 100
+            
+            open_positions.append({
+                "symbol": trade.symbol,
+                "bought_at": trade.bought_at,
+                "quantity": trade.quantity,
+                "entry_price": trade.entry_price,
+                "current_price": live_price,
+                "current_value": current_val,
+                "pnl_usd": pnl,
+                "pnl_percent": pnl_pct
+            })
+            
+        # --- LÓGICA PARA TRADES CERRADOS (HISTORIAL) ---
+        else:
+            # En cerrados, el PnL ya está guardado en la DB (realized_pnl)
+            # Calculamos % final basado en el resultado guardado
+            final_pnl = trade.realized_pnl if trade.realized_pnl else 0.0
+            pnl_pct = (final_pnl / trade.invested_amount) * 100
+            
+            closed_history.append({
+                "symbol": trade.symbol,
+                "bought_at": trade.bought_at,
+                "closed_at": trade.closed_at,
+                "sell_reason": trade.sell_reason, # TP o SL
+                "entry_price": trade.entry_price,
+                "exit_price": trade.exit_price,
+                "pnl_usd": final_pnl,
+                "pnl_percent": pnl_pct
+            })
+
+    # Enviamos DOS listas al HTML
     return templates.TemplateResponse("portfolio.html", {
         "request": request, 
-        "portfolio": portfolio_data
+        "open_positions": open_positions,
+        "closed_history": closed_history
     })
-
 
 # --- NUEVA FUNCIÓN AUTOMÁTICA DE VENTA ---
 def auto_manage_portfolio():

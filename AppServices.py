@@ -34,55 +34,62 @@ class MarketAnalyzer:
     # ---------------------------------------------------------
     def get_current_price(self, symbol: str) -> float:
         """
-        Intenta obtener el precio de 3 fuentes en orden:
-        1. Yahoo Finance
-        2. Binance (API Pública)
-        3. CoinMarketCap (Tu API Key)
+        Lógica optimizada para refresco rápido (1 min):
+        1. Stocks -> Yahoo
+        2. Cripto -> Binance (Prioridad 1) -> Yahoo (Respaldo) -> CMC (Emergencia)
         """
         price = 0.0
+        is_stock = symbol in WATCHLIST_STOCKS
 
-        # --- A. INTENTO YAHOO FINANCE ---
-        try:
-            # Detectar si es Stock o Cripto
-            ticker_str = symbol if symbol in WATCHLIST_STOCKS else f"{symbol}-USD"
-            ticker = yf.Ticker(ticker_str)
-            # Pedimos el historial del último día
-            hist = ticker.history(period="1d")
-            if not hist.empty:
-                price = hist['Close'].iloc[-1]
-                # print(f"✅ Precio {symbol} obtenido de Yahoo: {price}")
-                return price
-        except Exception:
-            pass # Si falla, seguimos al siguiente...
-
-        # --- B. INTENTO BINANCE (Solo Criptos) ---
-        if symbol not in WATCHLIST_STOCKS:
+        # --- CASO A: ES UNA ACCIÓN (STOCK) ---
+        if is_stock:
             try:
-                # Binance usa pares sin guion, ej: BTCUSDT
-                url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
-                r = requests.get(url, timeout=3)
-                if r.status_code == 200:
-                    data = r.json()
-                    price = float(data['price'])
-                    print(f"✅ Precio {symbol} obtenido de Binance: {price}")
-                    return price
-            except Exception:
-                pass # Si falla, seguimos al siguiente...
+                ticker = yf.Ticker(symbol)
+                hist = ticker.history(period="1d", interval="1m") # Intervalo corto
+                if not hist.empty:
+                    return hist['Close'].iloc[-1]
+            except:
+                pass
+            return 0.0 # Si falla Yahoo en stock, no hay donde más buscar
 
-        # --- C. INTENTO COINMARKETCAP (Fuente de Verdad) ---
-        # Si CMC nos dio la alerta, CMC tiene el precio.
+        # --- CASO B: ES UNA CRIPTO ---
+        
+        # 1. INTENTO BINANCE (El más rápido y con mayor límite)
         try:
+            # Binance usa pares sin guion, ej: BTCUSDT
+            url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
+            r = requests.get(url, timeout=2) # Timeout corto para ser rápido
+            if r.status_code == 200:
+                data = r.json()
+                price = float(data['price'])
+                # print(f"⚡ {symbol} desde Binance: {price}") # Descomentar para debug
+                return price
+        except:
+            pass 
+
+        # 2. INTENTO YAHOO (Respaldo gratuito)
+        try:
+            ticker = yf.Ticker(f"{symbol}-USD")
+            hist = ticker.history(period="1d", interval="1m")
+            if not hist.empty:
+                return hist['Close'].iloc[-1]
+        except:
+            pass
+
+        # 3. INTENTO COINMARKETCAP (La "Opción Nuclear")
+        # Solo llegamos aquí si Binance Y Yahoo fallaron.
+        # Esto protege tu límite mensual de API.
+        try:
+            print(f"⚠️ Usando cuota CMC para {symbol}...")
             url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
             params = {'symbol': symbol, 'convert': 'USD'}
             r = requests.get(url, headers=self.cmc_headers, params=params, timeout=5)
             if r.status_code == 200:
                 data = r.json()
-                # CMC devuelve un diccionario anidado
                 price = data['data'][symbol]['quote']['USD']['price']
-                print(f"✅ Precio {symbol} obtenido de CoinMarketCap: {price}")
                 return price
         except Exception as e:
-            print(f"❌ Fallaron todas las fuentes para {symbol}: {e}")
+            print(f"❌ Error total obteniendo precio {symbol}: {e}")
         
         return 0.0
 
@@ -186,14 +193,14 @@ class MarketAnalyzer:
     
     def check_exit_conditions(self, trade, current_price: float):
         """
-        Analiza si un trade debe cerrarse.
+       Analiza si un trade debe cerrarse.
         Estrategia: 
-        - Take Profit (TP): Ganancia del 5%
-        - Stop Loss (SL): Pérdida del 3%
+        - Take Profit (TP): 5% (0.05)
+        - Stop Loss (SL): 3% (-0.03)
         """
-        # CONFIGURACIÓN (Puedes cambiar estos números)
-        TP_PCT = 0.05  # 5% Ganancia
-        SL_PCT = -0.03 # 3% Pérdida (Stop Loss)
+        # CONFIGURACIÓN
+        TP_PCT = 0.05   # 5% Ganancia (Antes 0.001)
+        SL_PCT = -0.03  # -3% Pérdida (Antes -0.001) -> IMPORTANTE EL MENOS
 
         if current_price <= 0: return False, None, 0.0
 

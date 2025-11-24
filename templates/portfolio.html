@@ -8,16 +8,17 @@
     <style>
         body { background-color: #f8f9fa; }
         .header { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 2rem 0; margin-bottom: 2rem;}
-        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .positive { color: #198754; font-weight: bold; } /* Verde */
-        .negative { color: #dc3545; font-weight: bold; } /* Rojo */
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .positive { color: #198754; font-weight: bold; }
+        .negative { color: #dc3545; font-weight: bold; }
+        .badge-tp { background-color: #198754; }
+        .badge-sl { background-color: #dc3545; }
     </style>
 </head>
 <body>
 
     <div class="header text-center position-relative">
         <h1>💼 Portafolio de Inversiones</h1>
-        <p>Estado actual de tus activos en tiempo real</p>
         <div class="mt-3">
             <a href="/dashboard" class="btn btn-light btn-sm">⬅ Volver al Dashboard</a>
             <a href="/my-portfolio" class="btn btn-outline-light btn-sm active">Actualizar Datos 🔄</a>
@@ -25,54 +26,91 @@
     </div>
 
     <div class="container">
-        <div class="row">
-            <div class="col-12">
-                <div class="card p-4">
-                    {% if portfolio|length == 0 %}
-                        <div class="alert alert-warning text-center">
-                            📭 No tienes posiciones abiertas. ¡Ve al Dashboard y compra algo!
-                        </div>
-                    {% else %}
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th>Activo</th>
-                                        <th>Fecha Compra</th>
-                                        <th>Cantidad</th>
-                                        <th>Precio Entrada</th>
-                                        <th>Precio Actual</th>
-                                        <th>Valor Total</th>
-                                        <th>P&L ($)</th>
-                                        <th>P&L (%)</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for item in portfolio %}
-                                    <tr>
-                                        <td><strong>{{ item.symbol }}</strong></td>
-                                        <td>{{ item.bought_at.strftime('%Y-%m-%d %H:%M') }}</td>
-                                        <td>{{ "%.4f"|format(item.quantity) }}</td>
-                                        <td>${{ "%.2f"|format(item.entry_price) }}</td>
-                                        <td>${{ "%.2f"|format(item.current_price) }}</td>
-                                        <td>${{ "%.2f"|format(item.current_value) }}</td>
-                                        
-                                        <td class="{{ 'positive' if item.pnl_usd >= 0 else 'negative' }}">
-                                            {{ "+" if item.pnl_usd >= 0 else "" }}{{ "%.2f"|format(item.pnl_usd) }}
-                                        </td>
-                                        
-                                        <td class="{{ 'positive' if item.pnl_percent >= 0 else 'negative' }}">
-                                            {{ "+" if item.pnl_percent >= 0 else "" }}{{ "%.2f"|format(item.pnl_percent) }}%
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-                    {% endif %}
+        
+        <h4 class="mb-3 text-secondary">🟢 Posiciones Activas</h4>
+        <div class="card p-4">
+            {% if open_positions|length == 0 %}
+                <div class="alert alert-light text-center">No tienes operaciones abiertas.</div>
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Activo</th>
+                                <th>Fecha</th>
+                                <th>Entrada</th>
+                                <th>Precio Actual</th>
+                                <th>Valor</th>
+                                <th>P&L ($)</th>
+                                <th>P&L (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in open_positions %}
+                            <tr>
+                                <td><strong>{{ item.symbol }}</strong></td>
+                                <td>{{ item.bought_at.strftime('%m-%d %H:%M') }}</td>
+                                <td>${{ "%.4f"|format(item.entry_price) }}</td>
+                                <td>${{ "%.4f"|format(item.current_price) }}</td>
+                                <td>${{ "%.2f"|format(item.current_value) }}</td>
+                                <td class="{{ 'positive' if item.pnl_usd >= 0 else 'negative' }}">
+                                    {{ "+" if item.pnl_usd >= 0 else "" }}{{ "%.2f"|format(item.pnl_usd) }}
+                                </td>
+                                <td class="{{ 'positive' if item.pnl_percent >= 0 else 'negative' }}">
+                                    {{ "+" if item.pnl_percent >= 0 else "" }}{{ "%.2f"|format(item.pnl_percent) }}%
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
-            </div>
+            {% endif %}
         </div>
+
+        <h4 class="mb-3 text-secondary">🏁 Historial de Ventas</h4>
+        <div class="card p-4">
+            {% if closed_history|length == 0 %}
+                <div class="alert alert-light text-center">Aún no has cerrado ninguna operación.</div>
+            {% else %}
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-secondary">
+                            <tr>
+                                <th>Activo</th>
+                                <th>Vendida el</th>
+                                <th>Razón</th>
+                                <th>Entrada</th>
+                                <th>Salida</th>
+                                <th>Resultado ($)</th>
+                                <th>Resultado (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in closed_history %}
+                            <tr>
+                                <td><strong>{{ item.symbol }}</strong></td>
+                                <td>{{ item.closed_at.strftime('%m-%d %H:%M') }}</td>
+                                <td>
+                                    <span class="badge {{ 'badge-tp' if 'TAKE_PROFIT' in item.sell_reason else 'badge-sl' }}">
+                                        {{ item.sell_reason }}
+                                    </span>
+                                </td>
+                                <td>${{ "%.4f"|format(item.entry_price) }}</td>
+                                <td>${{ "%.4f"|format(item.exit_price) }}</td>
+                                <td class="{{ 'positive' if item.pnl_usd >= 0 else 'negative' }}">
+                                    {{ "+" if item.pnl_usd >= 0 else "" }}{{ "%.2f"|format(item.pnl_usd) }}
+                                </td>
+                                <td class="{{ 'positive' if item.pnl_percent >= 0 else 'negative' }}">
+                                    {{ "+" if item.pnl_percent >= 0 else "" }}{{ "%.2f"|format(item.pnl_percent) }}%
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% endif %}
+        </div>
+
     </div>
 
 </body>
