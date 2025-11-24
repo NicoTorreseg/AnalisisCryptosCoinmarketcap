@@ -1,11 +1,17 @@
 # Configuraciones globales del proyecto
 # En el futuro, podrías leer esto desde variables de entorno con os.getenv()
+import os
+from dotenv import load_dotenv
 
-CMC_API_KEY = "00d0af49977e4c2e9fea1cea7f395445"
+# Carga las variables del archivo .env
+load_dotenv()
+
+# Ahora leemos desde el sistema, no desde el código escrito
+CMC_API_KEY = os.getenv("CMC_API_KEY")
 CMC_BASE_URL = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/listings/latest"
 USE_MOCK_DATA = False
 SQLALCHEMY_DATABASE_URL = "sqlite:///./crypto_ops.db"
-GEMINI_API_KEY = "AIzaSyCZG4racZbjJ2SomeMuo3DDCRJP5ebaSsg"
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 
 # CONFIGURACIÓN STOCKS (YAHOO FINANCE)
@@ -17,10 +23,11 @@ WATCHLIST_STOCKS = [
 
 # --- NUEVA CONFIGURACIÓN PARA NOTIFICACIONES ---
 # 1. Busca "BotFather" en Telegram, crea un bot y pega el token aquí:
-TELEGRAM_BOT_TOKEN = "8205995262:AAGX9eGLz4tX6u-_U88x20dUW30gP1wnB50"
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # 2. Busca "userinfobot" en Telegram para saber tu ID numérico y pégalo aquí:
-TELEGRAM_CHAT_ID = "1838400268" 
+
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 # Horarios de ejecución automática (formato 24hs)
 SCHEDULE_HOURS = [9, 13, 22]

@@ -8,3 +8,4 @@ apscheduler
 jinja2
 GoogleNews
 google-generativeai
+python-dotenv
