@@ -35,102 +35,76 @@ async def lifespan(app: FastAPI):
 def auto_check_market():
     """
     Escaneo Inteligente (Técnico + Fundamental/IA).
-    1. Busca caídas de precio (Técnico).
-    2. Filtra con IA (Fundamental/Noticias).
-    3. Guarda y notifica solo las oportunidades aprobadas.
     """
     print(f"\n⏰ [AUTO] Escaneo Inteligente iniciado: {datetime.now()}")
     
-    # 1. Instancias
     analyzer = MarketAnalyzer()
-    news_intel = NewsIntel()  # <--- Instanciamos el Cerebro IA
+    news_intel = NewsIntel()
     db = SessionLocal()
     
     try:
-        # --- A. ANÁLISIS TÉCNICO (Busca candidatos por precio) ---
+        # --- A. ANÁLISIS TÉCNICO ---
         crypto_dips = analyzer.find_dip_opportunities(threshold=-5.0)
         stock_dips = analyzer.find_stock_dips(threshold=-3.0)
         
-        msg = ""
-        hay_datos = False
+        valid_cryptos = []
+        valid_stocks = [] # Preparado para stocks también
 
-        # --- B. FILTRADO CRIPTO CON IA ---
+        # --- B. CRIPTO IA ---
         if crypto_dips:
             print(f"🔎 Analizando {len(crypto_dips)} candidatos cripto con IA...")
-            valid_cryptos = []
-
             for op in crypto_dips:
-                symbol = op['symbol']
-                name = op['name'] # <--- Obtenemos el nombre real (CoinMarketCap ya nos lo da)
-                # 1. Consultar a la IA
-                ai_analysis = news_intel.get_sentiment_analysis(
-                    symbol=symbol, 
-                    asset_name=name, 
-                    is_crypto=True
-                )
-                # Extraer datos con valores por defecto para evitar errores
-                decision = ai_analysis.get('decision', 'NEUTRAL')
-                score = ai_analysis.get('score', 50)
-                reason = ai_analysis.get('reason', 'Sin datos')
+                # Consultar IA
+                ai_analysis = news_intel.get_sentiment_analysis(op['symbol'], op['name'], is_crypto=True)
                 
-                print(f"   🤖 {symbol}: Dictamen {decision} (Score: {score})")
+                decision = ai_analysis.get('decision', 'NEUTRAL')
+                op['ai_score'] = ai_analysis.get('score', 50)
+                op['ai_reason'] = ai_analysis.get('reason', 'Sin datos')
+                op['ai_decision'] = decision
 
-                # 2. Regla de Filtrado: Bloquear si la IA dice WAIT (Espera/Peligro)
-                # Aceptamos BUY y NEUTRAL. Rechazamos WAIT.
+                print(f"   🤖 {op['symbol']}: {decision}")
+
+                # FILTRO AUTOMÁTICO: Solo guardamos BUY o NEUTRAL (Ignoramos WAIT para no hacer spam)
                 if decision in ["BUY", "NEUTRAL"]:
-                    # Agregamos datos de IA al objeto para usarlo luego
-                    op['ai_score'] = score
-                    op['ai_reason'] = reason
                     valid_cryptos.append(op)
-                else:
-                    print(f"   ⛔ {symbol} BLOQUEADA por IA: {reason}")
-
-            # 3. Procesar solo las Aprobadas
-            if valid_cryptos:
-                hay_datos = True
-                msg += "🚨 **CRIPTO DIPS (Filtrado IA)** 🚨\n"
-                for op in valid_cryptos:
+                    
                     # Guardar en DB
                     db_signal = CryptoSignal(
                         symbol=op['symbol'], name=op['name'], 
                         price=op['price'], percent_change_24h=op['percent_change_24h'],
-                        rsi=op['rsi']
+                        rsi=op['rsi'], ai_score=op['ai_score'],
+                        ai_decision=decision, ai_reason=op['ai_reason']
                     )
                     db.add(db_signal)
-                    
-                    # Formato bonito para Telegram
-                    rsi_str = f"RSI: {op['rsi']}" if op['rsi'] else "RSI: N/A"
-                    ai_str = f"🤖 IA: {op.get('ai_score', 50)}/100"
-                    
-                    # Usamos .6f para ver decimales en monedas pequeñas (ej: PUMP)
-                    msg += f"📉 {op['symbol']}: ${op['price']:.6f} ({op['percent_change_24h']:.2f}%)\n"
-                    msg += f"   ↳ {rsi_str} | {ai_str}\n"
 
-        # --- C. PROCESAR STOCKS (Sin IA por ahora) ---
+        # --- C. STOCKS (Técnico por ahora, o IA simple) ---
         if stock_dips:
-            hay_datos = True
-            msg += "\n📉 **STOCKS DIPS** 📉\n"
-            for op in stock_dips:
+             for op in stock_dips:
+                # Opcional: Agregar IA para stocks en auto aquí si quieres
                 db_stock = StockSignal(
                     symbol=op['symbol'], price=op['price'], 
-                    percent_change=op['percent_change'],
-                    rsi=op['rsi']
+                    percent_change=op['percent_change'], rsi=op['rsi']
                 )
                 db.add(db_stock)
-                
-                rsi_str = f" | RSI: {op['rsi']}" if op['rsi'] else ""
-                msg += f"🏢 {op['symbol']}: ${op['price']:.2f} ({op['percent_change']:.2f}%){rsi_str}\n"
+                # Convertimos a formato compatible para el reporte
+                op['ai_decision'] = "TECNICO" 
+                op['ai_score'] = 50
+                op['ai_reason'] = "Detección automática por precio (Sin IA completa)"
+                valid_stocks.append(op)
 
-        # --- D. GUARDAR Y ENVIAR ---
         db.commit()
-        
-        if hay_datos:
-            msg += f"\n_🕒 {datetime.now().strftime('%H:%M')}_"
+
+        # --- D. NOTIFICACIONES DETALLADAS 🔥 ---
+        if valid_cryptos:
+            msg = format_detailed_message("REPORTE AUTO CRIPTO", valid_cryptos)
             Notifier.send_telegram_alert(msg)
-        elif crypto_dips and not valid_cryptos:
-            print(">>> Hubo oportunidades técnicas, pero la IA las bloqueó todas por seguridad.")
-        else:
-            print(">>> Sin oportunidades de mercado.")
+            
+        if valid_stocks:
+            msg = format_detailed_message("REPORTE AUTO STOCKS", valid_stocks)
+            Notifier.send_telegram_alert(msg)
+            
+        if not valid_cryptos and not valid_stocks:
+            print(">>> Sin oportunidades validadas.")
 
     except Exception as e:
         print(f"❌ Error Auto: {e}")
@@ -139,52 +113,42 @@ def auto_check_market():
 
 app = FastAPI(title="Market Bot Trading & AI", lifespan=lifespan)
 analyzer = MarketAnalyzer()
-
 templates = Jinja2Templates(directory="templates")
 
 @app.get("/")
 def root():
     return {"status": "Trading System Online 💸"}
 
-# --- ENDPOINTS EXISTENTES ---
+# --- ENDPOINTS MANUALES ---
+
 @app.get("/analyze", response_model=List[CoinSignalSchema])
 def analyze_market(threshold: float = -5.0, db: Session = Depends(get_db)):
     """
-    1. Busca Criptos con caída técnica.
-    2. Consulta a Gemini (IA) para análisis de sentimiento.
-    3. Guarda todo en la base de datos y lo devuelve.
+    Busca Criptos + IA y envía reporte DETALLADO a Telegram.
     """
-    # Instancias
     news_intel = NewsIntel()
-    
-    # 1. Análisis Técnico
     opportunities = analyzer.find_dip_opportunities(threshold)
     saved_signals = []
     
     print(f"🔎 [MANUAL] Analizando {len(opportunities)} oportunidades con IA...")
+    Notifier.send_telegram_alert(f"🔎 **Iniciando Análisis Manual...**\nDetectados {len(opportunities)} activos. Procesando con IA...")
 
     for op in opportunities:
-        symbol = op['symbol']
-        name = op['name'] # <--- Obtenemos el nombre real (CoinMarketCap ya nos lo da)
-        # 2. Análisis IA (On-Demand)
+        # IA Analysis
         try:
             ai_analysis = news_intel.get_sentiment_analysis(
-                    symbol=symbol, 
-                    asset_name=name, 
+                    symbol=op['symbol'], 
+                    asset_name=op['name'], 
                     is_crypto=True
                 )
         except Exception as e:
-            print(f"⚠️ Fallo IA para {symbol}: {e}")
-            ai_analysis = {"score": 50, "decision": "ERROR", "reason": "Timeout/Error"}
+            ai_analysis = {"score": 50, "decision": "ERROR", "reason": "Error IA"}
 
-        # 3. Guardar en DB con datos IA
+        # Guardar DB
         db_signal = CryptoSignal(
-            symbol=op['symbol'], 
-            name=op['name'], 
-            price=op['price'], 
-            percent_change_24h=op['percent_change_24h'],
+            symbol=op['symbol'], name=op['name'], 
+            price=op['price'], percent_change_24h=op['percent_change_24h'],
             rsi=op['rsi'],
-            # Datos IA
             ai_score=ai_analysis.get('score', 50),
             ai_decision=ai_analysis.get('decision', 'NEUTRAL'),
             ai_reason=ai_analysis.get('reason', 'Sin datos')
@@ -194,44 +158,46 @@ def analyze_market(threshold: float = -5.0, db: Session = Depends(get_db)):
         db.refresh(db_signal)
         saved_signals.append(db_signal)
     
+    # 🔥 ENVIAR REPORTE DETALLADO (INCLUYENDO LOS 'WAIT') 🔥
     if saved_signals:
-        # Opcional: Notificar también las búsquedas manuales
-        Notifier.send_telegram_alert(f"🔎 **Escaneo Manual Completo**\nSe analizaron {len(saved_signals)} activos con IA.")
-        
+        full_msg = format_detailed_message("ANÁLISIS MANUAL CRIPTO", saved_signals)
+        # Dividir mensaje si es muy largo (Telegram limite 4096 chars)
+        if len(full_msg) > 4000:
+            Notifier.send_telegram_alert(full_msg[:4000] + "...")
+            Notifier.send_telegram_alert("...(continuación) " + full_msg[4000:])
+        else:
+            Notifier.send_telegram_alert(full_msg)
+    else:
+        Notifier.send_telegram_alert("🤷‍♂️ No se encontraron oportunidades con ese filtro.")
+
     return saved_signals
 
 @app.get("/analyze/stocks", response_model=List[StockSignalSchema])
 def analyze_stocks(threshold: float = -3.0, db: Session = Depends(get_db)):
     """
-    Igual que criptos, pero para Acciones (Stocks).
+    Igual que criptos, pero para Acciones (Stocks) con reporte DETALLADO.
     """
     news_intel = NewsIntel()
-    
     opportunities = analyzer.find_stock_dips(threshold)
     saved_signals = []
     
     print(f"🔎 [MANUAL STOCKS] Analizando {len(opportunities)} acciones con IA...")
+    Notifier.send_telegram_alert(f"🔎 **Iniciando Análisis Stocks...**\nDetectadas {len(opportunities)} acciones.")
 
     for op in opportunities:
-        symbol = op['symbol']
-        
-        # 2. Análisis IA
         try:
             ai_analysis = news_intel.get_sentiment_analysis(
-                        symbol=symbol, 
+                        symbol=op['symbol'], 
                         asset_name="", 
                         is_crypto=False
                     )
         except:
             ai_analysis = {"score": 50, "decision": "NEUTRAL", "reason": "Sin datos"}
 
-        # 3. Guardar
         db_signal = StockSignal(
             symbol=op['symbol'], 
-            price=op['price'], 
-            percent_change=op['percent_change'],
+            price=op['price'], percent_change=op['percent_change'],
             rsi=op['rsi'],
-            # Datos IA
             ai_score=ai_analysis.get('score'),
             ai_decision=ai_analysis.get('decision'),
             ai_reason=ai_analysis.get('reason')
@@ -241,11 +207,14 @@ def analyze_stocks(threshold: float = -3.0, db: Session = Depends(get_db)):
         db.refresh(db_signal)
         saved_signals.append(db_signal)
         
-    return saved_signals
+    # 🔥 ENVIAR REPORTE DETALLADO STOCKS 🔥
+    if saved_signals:
+        full_msg = format_detailed_message("ANÁLISIS MANUAL STOCKS", saved_signals)
+        Notifier.send_telegram_alert(full_msg)
+    else:
+        Notifier.send_telegram_alert("🤷‍♂️ Sin oportunidades en Stocks.")
 
-@app.get("/history", response_model=List[CoinSignalSchema])
-def history(limit: int = 10, db: Session = Depends(get_db)):
-    return db.query(CryptoSignal).order_by(CryptoSignal.detected_at.desc()).limit(limit).all()
+    return saved_signals
 
 # ==========================================
 # --- NUEVOS ENDPOINTS: TRADING & SENTIMENT ---
@@ -389,6 +358,40 @@ def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
         "request": request, 
         "portfolio": portfolio_data
     })
+
+
+# --- HELPER: CONSTRUCTOR DE MENSAJES DETALLADOS ---
+def format_detailed_message(title: str, signals: list):
+    """
+    Construye un mensaje de Telegram formateado con detalles de IA.
+    Acepta tanto objetos de BD (SQLAlchemy) como diccionarios (Auto Scan).
+    """
+    if not signals:
+        return None
+
+    msg = f"🔔 **{title}** 🔔\n\n"
+    
+    for item in signals:
+        # Detectar si es diccionario (Auto) u Objeto DB (Manual)
+        is_dict = isinstance(item, dict)
+        
+        symbol = item['symbol'] if is_dict else item.symbol
+        price = item['price'] if is_dict else item.price
+        pct = item['percent_change_24h'] if is_dict else (item.percent_change if hasattr(item, 'percent_change') else item.percent_change_24h)
+        decision = item.get('ai_decision', 'N/A') if is_dict else item.ai_decision
+        score = item.get('ai_score', 0) if is_dict else item.ai_score
+        reason = item.get('ai_reason', 'Sin datos') if is_dict else item.ai_reason
+
+        # Emojis según decisión
+        icon = "✅" if decision == "BUY" else ("⚠️" if decision == "WAIT" else "😐")
+        
+        msg += f"{icon} **{symbol}** ({pct:.2f}%)\n"
+        msg += f"💲 Precio: ${price:.4f}\n"
+        msg += f"🧠 IA: **{decision}** (Score: {score})\n"
+        msg += f"📝 _Opinion: {reason}_\n"
+        msg += "---------------------------\n"
+    
+    return msg
 
 # --- ARRANQUE DEL SERVIDOR ---
 if __name__ == "__main__":
