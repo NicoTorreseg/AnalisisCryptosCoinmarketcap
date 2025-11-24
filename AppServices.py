@@ -4,8 +4,84 @@ import pandas as pd
 from typing import List
 from config import (
     CMC_API_KEY, CMC_BASE_URL, USE_MOCK_DATA, WATCHLIST_STOCKS,
-    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+    TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY
 )
+from GoogleNews import GoogleNews
+import google.generativeai as genai
+
+genai.configure(api_key=GEMINI_API_KEY)
+
+class NewsIntel:
+    def __init__(self):
+        self.googlenews = GoogleNews(lang='en', period='1d') # Noticias de últimas 24h
+        self.model = genai.GenerativeModel('gemini-2.5-flash')
+
+    def get_sentiment_analysis(self, symbol: str, asset_name: str = "", is_crypto: bool = True) -> dict:
+        """
+        Busca noticias con contexto (Crypto vs Stock) y analiza con IA.
+        """
+        # 1. CONSTRUCCIÓN DE BÚSQUEDA INTELIGENTE
+        if is_crypto:
+            # Priorizamos el NOMBRE real para evitar confusión (ej: "Dash cryptocurrency" vs "DoorDash")
+            # Si no tenemos nombre, usamos el símbolo + "crypto"
+            search_term = f"{asset_name} cryptocurrency" if asset_name else f"{symbol} crypto coin"
+        else:
+            # Para acciones, el símbolo suele ser suficiente, agregamos "stock" por seguridad
+            search_term = f"{symbol} stock news"
+
+        print(f"🧠 [IA] Buscando: '{search_term}'...")
+        
+        self.googlenews.clear()
+        self.googlenews.search(search_term)
+        results = self.googlenews.result()
+        
+        # Si no hay resultados con el nombre completo, intento de respaldo con el símbolo
+        if not results and is_crypto:
+             print(f"   ⚠️ Reintentando con símbolo: {symbol}...")
+             self.googlenews.clear()
+             self.googlenews.search(f"{symbol} crypto")
+             results = self.googlenews.result()
+
+        if not results:
+            return {"score": 50, "decision": "NEUTRAL", "reason": f"No se encontraron noticias recientes para {search_term}"}
+
+        # Tomamos los 5 titulares más recientes
+        top_news = [f"- {item['title']} (Source: {item['media']})" for item in results[:5]]
+        news_text = "\n".join(top_news)
+
+        # 2. El Prompt (Mejorado con contexto explícito)
+        asset_type = "cryptocurrency" if is_crypto else "stock"
+        
+        prompt = f"""
+        Role: Senior Financial Analyst.
+        Asset: {asset_name if asset_name else symbol} ({asset_type}).
+        Ticker: {symbol}
+        
+        Recent Headlines found:
+        {news_text}
+
+        Task: 
+        1. Filter out irrelevant news (e.g., if analyzing 'Dash' crypto, ignore 'DoorDash' stocks).
+        2. Analyze the sentiment ONLY based on relevant news.
+        3. Identify FUD, Hype, or Fundamentals.
+
+        Response format (JSON only):
+        {{
+            "score": (integer 0-100, 0=Panic, 50=Neutral/Irrelevant, 100=Greed),
+            "decision": ("BUY", "WAIT", "NEUTRAL"),
+            "reason": "Brief explanation in Spanish. If news are irrelevant, state it."
+        }}
+        """
+
+        try:
+            response = self.model.generate_content(prompt)
+            clean_json = response.text.replace("```json", "").replace("```", "").strip()
+            import json
+            analysis = json.loads(clean_json)
+            return analysis
+        except Exception as e:
+            print(f"❌ Error IA: {e}")
+            return {"score": 50, "decision": "ERROR", "reason": "Fallo en IA"}
 
 # --- CLASE NOTIFICADOR ---
 class Notifier:
