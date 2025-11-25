@@ -322,26 +322,21 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
 @app.get("/my-portfolio", response_class=HTMLResponse, tags=["Dashboard"])
 def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
     """
-    Vista visual del portafolio con cálculo de ganancias/pérdidas.
-    
-    # 💼 [HAZ CLIC AQUÍ PARA VER TU PORTAFOLIO WEB](/my-portfolio)
+    Renderiza el Portafolio Web (Solo Posiciones Abiertas).
     """
     trades = db.query(Trade).filter(Trade.status == "OPEN").all()
     portfolio_data = []
     
     for trade in trades:
-        # 1. Obtener precio en vivo (usamos la misma lógica que en la API JSON)
         live_price = analyzer.get_current_price(trade.symbol)
-        if live_price == 0:
-            live_price = trade.entry_price 
+        if live_price == 0: live_price = trade.entry_price 
             
-        # 2. Cálculos matemáticos
         current_val = live_price * trade.quantity
         pnl = current_val - trade.invested_amount
         pnl_pct = (pnl / trade.invested_amount) * 100
         
-        # 3. Crear objeto para la plantilla
         item = {
+            "id": trade.id, # IDENTIFICADOR PARA EL BOTÓN DE VENTA
             "symbol": trade.symbol,
             "bought_at": trade.bought_at,
             "quantity": trade.quantity,
@@ -353,12 +348,52 @@ def view_portfolio_web(request: Request, db: Session = Depends(get_db)):
         }
         portfolio_data.append(item)
         
-    # 4. Renderizar el HTML
     return templates.TemplateResponse("portfolio.html", {
         "request": request, 
         "portfolio": portfolio_data
     })
 
+# --- ENDPOINT DE VENTA MANUAL CORREGIDO ---
+@app.post("/trade/sell/{trade_id}")
+def manual_sell_trade(trade_id: int, db: Session = Depends(get_db)):
+    """Venta Manual: Cierra la operación y guarda resultados."""
+    trade = db.query(Trade).filter(Trade.id == trade_id).first()
+    
+    if not trade:
+        raise HTTPException(status_code=404, detail="Trade no encontrado")
+    if trade.status == "CLOSED":
+        raise HTTPException(status_code=400, detail="Este trade ya está cerrado")
+        
+    # 1. Obtener precio actual
+    current_price = analyzer.get_current_price(trade.symbol)
+    if current_price == 0: 
+        # Si falla la API, usamos el precio de entrada como fallback de emergencia
+        current_price = trade.entry_price 
+
+    # 2. Calcular Ganancia
+    pnl_usd = (current_price - trade.entry_price) * trade.quantity
+    
+    # 3. Actualizar TODOS los campos
+    trade.status = "CLOSED"
+    trade.exit_price = current_price
+    trade.sell_reason = "MANUAL_SELL"
+    trade.closed_at = datetime.utcnow()
+    trade.realized_pnl = pnl_usd
+    
+    # 4. Guardar
+    db.commit()
+    
+    # 5. Notificar
+    icon = "💰" if pnl_usd > 0 else "📉"
+    msg = (
+        f"{icon} **VENTA MANUAL EJECUTADA**\n"
+        f"Activo: {trade.symbol}\n"
+        f"Salida: ${current_price:.4f}\n"
+        f"PnL: ${pnl_usd:.2f}"
+    )
+    Notifier.send_telegram_alert(msg)
+    
+    return {"message": "Venta exitosa", "pnl": pnl_usd}
 
 # --- HELPER: CONSTRUCTOR DE MENSAJES DETALLADOS ---
 def format_detailed_message(title: str, signals: list):

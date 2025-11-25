@@ -40,9 +40,15 @@ class Trade(Base):
     __tablename__ = "trades"
 
     id = Column(Integer, primary_key=True, index=True)
-    symbol = Column(String, index=True)       # Ej: BTC
-    entry_price = Column(Float)               # Precio al que compraste
-    quantity = Column(Float)                  # Cantidad de monedas
-    invested_amount = Column(Float)           # Total invertido en USD (entry_price * quantity)
-    status = Column(String, default="OPEN")   # OPEN / CLOSED
+    symbol = Column(String, index=True)
+    entry_price = Column(Float)
+    quantity = Column(Float)
+    invested_amount = Column(Float)
+    status = Column(String, default="OPEN")
     bought_at = Column(DateTime, default=datetime.utcnow)
+    
+    # ESTOS CAMPOS FALTABAN EN EL CÓDIGO (aunque estuvieran en la DB):
+    exit_price = Column(Float, nullable=True)
+    sell_reason = Column(String, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    realized_pnl = Column(Float, nullable=True)

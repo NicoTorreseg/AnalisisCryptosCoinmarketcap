@@ -45,6 +45,7 @@
                                         <th>Valor Total</th>
                                         <th>P&L ($)</th>
                                         <th>P&L (%)</th>
+                                        <th>Acción</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -64,6 +65,16 @@
                                         <td class="{{ 'positive' if item.pnl_percent >= 0 else 'negative' }}">
                                             {{ "+" if item.pnl_percent >= 0 else "" }}{{ "%.2f"|format(item.pnl_percent) }}%
                                         </td>
+
+                                        <!-- Botón Mejorado: Usamos data attributes -->
+                                        <td>
+                                            <button 
+                                                class="btn btn-danger btn-sm btn-sell" 
+                                                data-id="{{ item.id }}" 
+                                                data-symbol="{{ item.symbol }}">
+                                                VENDER 🔨
+                                            </button>
+                                        </td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -74,6 +85,49 @@
             </div>
         </div>
     </div>
+
+    <!-- Script Mejorado -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Buscamos todos los botones de venta
+            const sellButtons = document.querySelectorAll('.btn-sell');
+
+            sellButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    // Leemos los datos del botón
+                    const tradeId = this.getAttribute('data-id');
+                    const symbol = this.getAttribute('data-symbol');
+                    
+                    sellTrade(tradeId, symbol);
+                });
+            });
+        });
+
+        async function sellTrade(tradeId, symbol) {
+            if (!confirm(`¿Estás seguro que quieres vender ${symbol} al precio actual de mercado?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/trade/sell/${tradeId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    alert(`✅ ¡Venta Exitosa!\nResultado: $${data.pnl.toFixed(2)}`);
+                    location.reload(); 
+                } else {
+                    alert(`❌ Error: ${data.detail}`);
+                }
+            } catch (error) {
+                console.error("Error:", error);
+                alert("❌ Error de conexión con el servidor");
+            }
+        }
+    </script>
 
 </body>
 </html>
