@@ -3,7 +3,7 @@ import yfinance as yf
 import pandas as pd
 from typing import List
 from config import (
-    CMC_API_KEY, CMC_BASE_URL, USE_MOCK_DATA, WATCHLIST_STOCKS,
+    CMC_API_KEY, CMC_BASE_URL, USE_MOCK_DATA, WATCHLIST_STOCKS,WATCHLIST_MERVAL,
     TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, GEMINI_API_KEY
 )
 from GoogleNews import GoogleNews
@@ -16,17 +16,17 @@ class NewsIntel:
         self.googlenews = GoogleNews(lang='en', period='1d') # Noticias de últimas 24h
         self.model = genai.GenerativeModel('gemini-2.5-flash')
 
-    def get_sentiment_analysis(self, symbol: str, asset_name: str = "", is_crypto: bool = True) -> dict:
+    def get_sentiment_analysis(self, symbol: str, asset_name: str = "", is_crypto: bool = True, is_merval: bool = False) -> dict:
         """
-        Busca noticias con contexto (Crypto vs Stock) y analiza con IA.
+        Busca noticias con contexto (Crypto vs Stock vs Merval) y analiza con IA.
         """
         # 1. CONSTRUCCIÓN DE BÚSQUEDA INTELIGENTE
         if is_crypto:
-            # Priorizamos el NOMBRE real para evitar confusión (ej: "Dash cryptocurrency" vs "DoorDash")
-            # Si no tenemos nombre, usamos el símbolo + "crypto"
             search_term = f"{asset_name} cryptocurrency" if asset_name else f"{symbol} crypto coin"
+        elif is_merval:
+            # Contexto explícito para Argentina para que encuentre noticias financieras
+            search_term = f"{symbol} stock argentina finanzas" 
         else:
-            # Para acciones, el símbolo suele ser suficiente, agregamos "stock" por seguridad
             search_term = f"{symbol} stock news"
 
         print(f"🧠 [IA] Buscando: '{search_term}'...")
@@ -35,7 +35,7 @@ class NewsIntel:
         self.googlenews.search(search_term)
         results = self.googlenews.result()
         
-        # Si no hay resultados con el nombre completo, intento de respaldo con el símbolo
+        # Reintento de respaldo
         if not results and is_crypto:
              print(f"   ⚠️ Reintentando con símbolo: {symbol}...")
              self.googlenews.clear()
@@ -49,11 +49,19 @@ class NewsIntel:
         top_news = [f"- {item['title']} (Source: {item['media']})" for item in results[:5]]
         news_text = "\n".join(top_news)
 
-        # 2. El Prompt (Mejorado con contexto explícito)
-        asset_type = "cryptocurrency" if is_crypto else "stock"
+        # 2. El Prompt (Tu original + Variable de contexto Merval)
+        if is_crypto:
+            asset_type = "cryptocurrency"
+            role_extension = ""
+        elif is_merval:
+            asset_type = "Argentine Stock/ADR"
+            role_extension = " expert in Emerging Markets and Argentina Volatility"
+        else:
+            asset_type = "stock"
+            role_extension = ""
         
         prompt = f"""
-        Role: Senior Financial Analyst.
+        Role: Senior Financial Analyst{role_extension}.
         Asset: {asset_name if asset_name else symbol} ({asset_type}).
         Ticker: {symbol}
         
@@ -116,7 +124,6 @@ class MarketAnalyzer:
         # Mantenemos self.headers por compatibilidad si algo lo usa, pero apuntando a lo mismo
         self.headers = self.cmc_headers
 
-    # --- MÉTODO EN CASCADA (FIX PARA COMPRAS) ---
     def get_current_price(self, symbol: str) -> float:
         """
         Intenta obtener el precio de 3 fuentes en orden:
@@ -126,7 +133,7 @@ class MarketAnalyzer:
         """
         # --- A. INTENTO YAHOO FINANCE ---
         try:
-            ticker_str = symbol if symbol in WATCHLIST_STOCKS else f"{symbol}-USD"
+            ticker_str = symbol if symbol in WATCHLIST_STOCKS or symbol in WATCHLIST_MERVAL else f"{symbol}-USD"
             ticker = yf.Ticker(ticker_str)
             hist = ticker.history(period="1d")
             if not hist.empty:
@@ -135,7 +142,7 @@ class MarketAnalyzer:
             pass # Falló Yahoo, seguimos...
 
         # --- B. INTENTO BINANCE (Solo Criptos) ---
-        if symbol not in WATCHLIST_STOCKS:
+        if symbol not in WATCHLIST_STOCKS or symbol not in WATCHLIST_MERVAL:
             try:
                 # Binance usa pares sin guion, ej: BTCUSDT
                 url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
@@ -162,6 +169,59 @@ class MarketAnalyzer:
             print(f"❌ Fallaron todas las fuentes para {symbol}: {e}")
         
         return 0.0
+
+    # --- MÉTODO EN CASCADA (FIX PARA COMPRAS) ---
+    # def get_current_price(self, symbol: str) -> float:
+    #     """
+    #     Intenta obtener el precio de 3 fuentes en orden:
+    #     1. Yahoo Finance (Stocks/Cripto)
+    #     2. Binance (Cripto API Pública)
+    #     3. CoinMarketCap (Tu API Key - Último recurso)
+    #     """
+    #     # --- A. INTENTO YAHOO FINANCE ---
+    #     try:
+    #         ticker_str = symbol if symbol in WATCHLIST_STOCKS or symbol in WATCHLIST_MERVAL else f"{symbol}-USD"
+    #         ticker = yf.Ticker(ticker_str)
+    #         hist = ticker.history(period="1d")
+    #         if not hist.empty:
+    #             return hist['Close'].iloc[-1]
+    #         else:
+    #             price = ticker.fast_info.last_price
+    #             if price: return price 
+    #             else: 
+    #                 print("No price data in Yahoo finance.")
+
+    #     except Exception:
+    #         pass # Falló Yahoo, seguimos...
+
+    #     # --- B. INTENTO BINANCE (Solo Criptos) ---
+    #     if symbol not in WATCHLIST_STOCKS or symbol not in WATCHLIST_MERVAL:
+    #         try:
+    #             # Binance usa pares sin guion, ej: BTCUSDT
+    #             url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}USDT"
+    #             r = requests.get(url, timeout=3)
+    #             if r.status_code == 200:
+    #                 data = r.json()
+    #                 price = float(data['price'])
+    #                 print(f"✅ Precio {symbol} obtenido de Binance: {price}")
+    #                 return price
+    #         except Exception:
+    #             pass # Falló Binance, seguimos...
+
+    #     # --- C. INTENTO COINMARKETCAP (Fuente de Verdad) ---
+    #     try:
+    #         url = "https://pro-api.coinmarketcap.com/v1/cryptocurrency/quotes/latest"
+    #         params = {'symbol': symbol, 'convert': 'USD'}
+    #         r = requests.get(url, headers=self.cmc_headers, params=params, timeout=5)
+    #         if r.status_code == 200:
+    #             data = r.json()
+    #             price = data['data'][symbol]['quote']['USD']['price']
+    #             print(f"✅ Precio {symbol} obtenido de CoinMarketCap: {price}")
+    #             return price
+    #     except Exception as e:
+    #         print(f"❌ Fallaron todas las fuentes para {symbol}: {e}")
+        
+    #     return 0.0
 
     def _calculate_rsi(self, series: pd.Series, period: int = 14) -> float:
         if len(series) < period + 1: return 50.0
@@ -242,6 +302,33 @@ class MarketAnalyzer:
                         if change_pct <= threshold:
                             opportunities.append({
                                 "symbol": symbol, "price": round(current, 2),
+                                "percent_change": round(change_pct, 2), "rsi": rsi_val
+                            })
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        opportunities.sort(key=lambda x: x['percent_change'])
+        return opportunities
+    
+    def find_merval_dips(self, threshold: float = -2.0) -> List[dict]:
+        """Escanea ADRs Argentinos en Wall Street."""
+        opportunities = []
+        try:
+            tickers = yf.Tickers(" ".join(WATCHLIST_MERVAL))
+            for symbol in WATCHLIST_MERVAL:
+                try:
+                    ticker = tickers.tickers[symbol]
+                    hist = ticker.history(period="1mo")
+                    if len(hist) >= 15:
+                        current = hist['Close'].iloc[-1]
+                        prev = hist['Close'].iloc[-2]
+                        change_pct = ((current - prev) / prev) * 100
+                        rsi_val = self._calculate_rsi(hist['Close'])
+                        
+                        if change_pct <= threshold:
+                            opportunities.append({
+                                "symbol": symbol, "price": round(current, 2), 
                                 "percent_change": round(change_pct, 2), "rsi": rsi_val
                             })
                 except Exception:

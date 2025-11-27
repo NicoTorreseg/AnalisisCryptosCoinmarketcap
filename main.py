@@ -46,6 +46,7 @@ def auto_check_market():
         # --- A. ANÁLISIS TÉCNICO ---
         crypto_dips = analyzer.find_dip_opportunities(threshold=-5.0)
         stock_dips = analyzer.find_stock_dips(threshold=-3.0)
+        merval_dips = analyzer.find_merval_dips(threshold=-2.0)
         
         valid_cryptos = []
         valid_stocks = [] # Preparado para stocks también
@@ -91,6 +92,19 @@ def auto_check_market():
                 op['ai_score'] = 50
                 op['ai_reason'] = "Detección automática por precio (Sin IA completa)"
                 valid_stocks.append(op)
+                
+        if merval_dips:
+             for op in merval_dips:
+                # Lógica de guardado igual a stocks
+                db_stock = StockSignal(
+                    symbol=op['symbol'], price=op['price'], 
+                    percent_change=op['percent_change'], rsi=op['rsi'],
+                    ai_decision="TECNICO", ai_score=50, ai_reason="Auto Merval"
+                )
+                db.add(db_stock)
+                op['ai_decision'] = "TECNICO"
+                valid_stocks.append(op) # Lo agregamos a la lista para notificar junto con los otros stocks
+        
 
         db.commit()
 
@@ -213,6 +227,55 @@ def analyze_stocks(threshold: float = -3.0, db: Session = Depends(get_db)):
         Notifier.send_telegram_alert(full_msg)
     else:
         Notifier.send_telegram_alert("🤷‍♂️ Sin oportunidades en Stocks.")
+
+    return saved_signals
+
+@app.get("/analyze/Merval", response_model=List[StockSignalSchema])
+def analyze_merval(threshold: float = -2.0, db: Session = Depends(get_db)):
+    """
+    Escanea ADRs Argentinos en Dólares (YPF, GGAL, MELI, etc.)
+    """
+    news_intel = NewsIntel()
+    # 1. Análisis Técnico (Usamos la nueva función)
+    opportunities = analyzer.find_merval_dips(threshold)
+    saved_signals = []
+    
+    print(f"🧉 [MERVAL USD] Analizando {len(opportunities)} ADRs...")
+    Notifier.send_telegram_alert(f"🇦🇷 **Iniciando Escaneo Merval (USD)...**\nDetectadas {len(opportunities)} oportunidades.")
+
+    # 2. Análisis IA
+    for op in opportunities:
+        try:
+            # is_crypto=False para que busque noticias financieras estándar
+            ai_analysis = news_intel.get_sentiment_analysis(
+                        symbol=op['symbol'], 
+                        asset_name="", 
+                        is_crypto=False
+                    )
+        except:
+            ai_analysis = {"score": 50, "decision": "NEUTRAL", "reason": "Sin datos"}
+
+        # Guardamos en la tabla de Stocks (mismo esquema)
+        db_signal = StockSignal(
+            symbol=op['symbol'], 
+            price=op['price'], 
+            percent_change=op['percent_change'],
+            rsi=op['rsi'],
+            ai_score=ai_analysis.get('score'),
+            ai_decision=ai_analysis.get('decision'),
+            ai_reason=ai_analysis.get('reason')
+        )
+        db.add(db_signal)
+        saved_signals.append(db_signal)
+        
+    db.commit()
+        
+    # 3. Reporte Telegram
+    if saved_signals:
+        full_msg = format_detailed_message("🇦🇷 REPORTE MERVAL (Wall St)", saved_signals)
+        Notifier.send_telegram_alert(full_msg)
+    else:
+        Notifier.send_telegram_alert("🤷‍♂️ Merval estable. Sin caídas fuertes en USD.")
 
     return saved_signals
 

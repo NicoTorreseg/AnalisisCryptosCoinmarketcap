@@ -21,6 +21,32 @@ WATCHLIST_STOCKS = [
     "NFLX", "AMD", "INTC", "BABA", "PYPL", "UBER", "COIN"
 ]
 
+# --- NUEVA CONFIGURACIÓN: MERVAL (ARGENTINA) ---
+# Tickers de Yahoo Finance terminan en .BA para Buenos Aires
+# Acciones argentinas que cotizan en Wall Street (NYSE/NASDAQ).
+# Al no tener el sufijo .BA, Yahoo Finance traerá el precio en Dólares.
+WATCHLIST_MERVAL = [
+    "YPF",      # YPF S.A.
+    "GGAL",     # Grupo Financiero Galicia
+    "BMA",      # Banco Macro
+    "BBAR",     # BBVA Argentina
+    "SUPV",     # Grupo Supervielle
+    "PAM",      # Pampa Energía
+    "CEPU",     # Central Puerto
+    "TGS",      # Transportadora de Gas del Sur
+    "EDN",      # Edenor
+    "TEO",      # Telecom Argentina
+    "LOMA",     # Loma Negra (Cementos)
+    "CRESY",    # Cresud (Agro)
+    "IRS",      # IRSA (Inversiones y Representaciones)
+    "TX",       # Ternium S.A.
+    "VIST",     # Vista Energy (Vaca Muerta)
+    "MELI",     # MercadoLibre (La gigante del ecommerce)
+    "GLOB",     # Globant (Software)
+    "DESP",     # Despegar
+    "BIOX"      # Bioceres Crop Solutions
+]
+
 # --- NUEVA CONFIGURACIÓN PARA NOTIFICACIONES ---
 # 1. Busca "BotFather" en Telegram, crea un bot y pega el token aquí:
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
