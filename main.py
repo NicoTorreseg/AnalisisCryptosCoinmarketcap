@@ -493,6 +493,8 @@ def format_detailed_message(title: str, signals: list):
 
 # --- ARRANQUE DEL SERVIDOR ---
 if __name__ == "__main__":
+    hostsv="0.0.0.0" #local es "127.0.0.1"
     print("--- Iniciando servidor modular ---")
-    print("Documentación disponible en: http://127.0.0.1:8000/docs")
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    print(f"Documentación disponible en: http://{hostsv}:8000/docs")
+    print(f"Cliente: http://192.168.0.50:8000/docs")
+    uvicorn.run(app, host=hostsv, port=8000)
