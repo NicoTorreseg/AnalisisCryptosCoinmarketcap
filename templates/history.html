@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📜 Historial de Trades</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        /* Gradiente distinto para diferenciarlo (Violeta/Azul) */
+        .header { background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%); color: white; padding: 2rem 0; margin-bottom: 2rem;}
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .positive { color: #198754; font-weight: bold; } /* Verde */
+        .negative { color: #dc3545; font-weight: bold; } /* Rojo */
+        .total-pnl-card { background-color: #fff; border-radius: 15px; text-align: center; padding: 20px; margin-bottom: 30px;}
+    </style>
+</head>
+<body>
+
+    <div class="header text-center">
+        <h1>📜 Historial de Operaciones</h1>
+        <p>Registro de todos tus trades cerrados</p>
+        <div class="mt-3">
+            <a href="/dashboard" class="btn btn-outline-light btn-sm">⬅ Dashboard</a>
+            <a href="/my-portfolio" class="btn btn-outline-light btn-sm">💼 Ver Portafolio Activo</a>
+        </div>
+    </div>
+
+    <div class="container">
+        
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card total-pnl-card">
+                    <h5 class="text-muted">PNL HISTÓRICO TOTAL</h5>
+                    <h2 class="{{ 'positive' if total_pnl >= 0 else 'negative' }}">
+                        {{ "+" if total_pnl >= 0 else "" }}${{ "%.2f"|format(total_pnl) }}
+                    </h2>
+                    <small>Resultado neto de {{ trades|length }} operaciones cerradas</small>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="card p-4">
+                    {% if trades|length == 0 %}
+                        <div class="alert alert-secondary text-center">
+                            📭 Aún no has cerrado ninguna operación.
+                        </div>
+                    {% else %}
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Activo</th>
+                                        <th>Fecha Venta</th>
+                                        <th>Compra ($)</th>
+                                        <th>Venta ($)</th>
+                                        <th>Inversión</th>
+                                        <th>Razón</th>
+                                        <th>P&L ($)</th>
+                                        <th>P&L (%)</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in trades %}
+                                    <tr>
+                                        <td><strong>{{ item.symbol }}</strong></td>
+                                        <td>
+                                            {% if item.closed_at %}
+                                                {{ item.closed_at.strftime('%Y-%m-%d %H:%M') }}
+                                            {% else %}
+                                                -
+                                            {% endif %}
+                                        </td>
+                                        <td>${{ "%.4f"|format(item.entry_price) }}</td>
+                                        <td>${{ "%.4f"|format(item.exit_price if item.exit_price else 0) }}</td>
+                                        <td>${{ "%.2f"|format(item.invested_amount) }}</td>
+                                        <td><span class="badge bg-secondary">{{ item.sell_reason }}</span></td>
+                                        
+                                        <td class="{{ 'positive' if item.realized_pnl >= 0 else 'negative' }}">
+                                            {{ "+" if item.realized_pnl >= 0 else "" }}{{ "%.2f"|format(item.realized_pnl) }}
+                                        </td>
+                                        
+                                        {% set pnl_pct = (item.realized_pnl / item.invested_amount) * 100 %}
+                                        <td class="{{ 'positive' if pnl_pct >= 0 else 'negative' }}">
+                                            {{ "+" if pnl_pct >= 0 else "" }}{{ "%.2f"|format(pnl_pct) }}%
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

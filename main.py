@@ -458,6 +458,27 @@ def manual_sell_trade(trade_id: int, db: Session = Depends(get_db)):
     
     return {"message": "Venta exitosa", "pnl": pnl_usd}
 
+@app.get("/history", response_class=HTMLResponse, tags=["Dashboard"])
+def view_history_web(request: Request, db: Session = Depends(get_db)):
+    """
+    Renderiza el Historial de Trades Cerrados y el PnL Total.
+    """
+    # 1. Buscar trades cerrados ordenados por fecha de cierre descendente
+    closed_trades = db.query(Trade)\
+        .filter(Trade.status == "CLOSED")\
+        .order_by(Trade.closed_at.desc())\
+        .all()
+    
+    # 2. Calcular PnL Total Histórico
+    total_pnl = sum(t.realized_pnl for t in closed_trades if t.realized_pnl is not None)
+    
+    # 3. Renderizar template
+    return templates.TemplateResponse("history.html", {
+        "request": request, 
+        "trades": closed_trades,
+        "total_pnl": total_pnl
+    })
+
 # --- HELPER: CONSTRUCTOR DE MENSAJES DETALLADOS ---
 def format_detailed_message(title: str, signals: list):
     """
